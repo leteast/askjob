@@ -9,8 +9,8 @@
   const [username, password] = credentials.split(':');
 
   if (username === 'missiona' && password === 'kadai') {
-    // 認証成功 → リダイレクト or プロキシ
-    return res.redirect(302, '/h_nakayama.html');  // または全体を保護したい場合、res.send('Authenticated')
+    // 認証成功 → コンテンツを返す（リダイレクトなし）
+    return res.status(200).send('Authenticated - Redirecting to content...');  // または req.url にリダイレクト
   }
 
   return res.status(401).send('Unauthorized');
