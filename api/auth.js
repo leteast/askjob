@@ -1,13 +1,13 @@
-﻿import { createReadStream } from 'fs';
-import { stat } from 'fs/promises';
-import path from 'path';
+﻿const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-export default async function handler(req, res) {
+module.exports = (req, res) => {
   const auth = req.headers.authorization;
 
   if (!auth || !auth.startsWith('Basic ')) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    res.status(401).end('Unauthorized');
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Secure Area"' });
+    res.end('Unauthorized');
     return;
   }
 
@@ -15,26 +15,27 @@ export default async function handler(req, res) {
   const [username, password] = credentials.split(':');
 
   if (username !== 'missiona' || password !== 'kadai') {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    res.status(401).end('Unauthorized');
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Secure Area"' });
+    res.end('Unauthorized');
     return;
   }
 
-  // 認証成功 → 静的ファイルをproxy配信
-  const filePath = path.join(process.cwd(), req.url === '/' ? '/index.html' : req.url);
-  try {
-    const stats = await stat(filePath);
-    if (stats.isFile()) {
-      res.setHeader('Content-Type', getContentType(filePath));
-      res.setHeader('Content-Length', stats.size);
-      createReadStream(filePath).pipe(res);
-    } else {
-      res.status(404).end('Not Found');
+  // 認証成功 → 静的ファイルを配信
+  let filePath = path.join(process.cwd(), req.url === '/' ? '/index.html' : req.url);
+  if (req.url.endsWith('/')) filePath += 'index.html';
+
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      res.writeHead(404);
+      res.end('Not Found');
+      return;
     }
-  } catch (err) {
-    res.status(404).end('Not Found');
-  }
-}
+
+    const contentType = getContentType(filePath);
+    res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': stats.size });
+    fs.createReadStream(filePath).pipe(res);
+  });
+};
 
 function getContentType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -44,6 +45,7 @@ function getContentType(filePath) {
     '.js': 'application/javascript',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
+    '.gif': 'image/gif',
   };
   return types[ext] || 'application/octet-stream';
 }
