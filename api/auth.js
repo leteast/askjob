@@ -1,36 +1,49 @@
-﻿import { NextResponse } from 'next/server';
+﻿import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
+import path from 'path';
 
-export default function handler(req) {
-  const auth = req.headers.get('authorization');
+export default async function handler(req, res) {
+  const auth = req.headers.authorization;
 
   if (!auth || !auth.startsWith('Basic ')) {
-    return new NextResponse('Unauthorized', {
-      status: 401,
-      headers: {
-        'WWW-Authenticate': 'Basic realm="Secure Area"',
-      },
-    });
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    res.status(401).end('Unauthorized');
+    return;
   }
 
   const credentials = Buffer.from(auth.split(' ')[1], 'base64').toString();
   const [username, password] = credentials.split(':');
 
-  if (username === 'missiona' && password === 'kadai') {
-    // 認証成功 → 静的ファイルを返す
-    return NextResponse.redirect(new URL('/h_nakayama.html', req.url));
+  if (username !== 'missiona' || password !== 'kadai') {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    res.status(401).end('Unauthorized');
+    return;
   }
 
-  return new NextResponse('Unauthorized', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Secure Area"',
-    },
-  });
+  // 認証成功 → 静的ファイルをproxy配信
+  const filePath = path.join(process.cwd(), req.url === '/' ? '/index.html' : req.url);
+  try {
+    const stats = await stat(filePath);
+    if (stats.isFile()) {
+      res.setHeader('Content-Type', getContentType(filePath));
+      res.setHeader('Content-Length', stats.size);
+      createReadStream(filePath).pipe(res);
+    } else {
+      res.status(404).end('Not Found');
+    }
+  } catch (err) {
+    res.status(404).end('Not Found');
+  }
 }
 
-// 全体に適用
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+function getContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+  };
+  return types[ext] || 'application/octet-stream';
+}
